@@ -47,9 +47,14 @@ TouchState touch;
 
 // App state
 AppMode currentMode = MENU;
+unsigned long lastConnectionBlinkMs = 0;
+bool connectionBlockVisible = true;
+bool connectionStatusWasConnected = false;
+const unsigned long CONNECTION_BLINK_INTERVAL_MS = 500;
 
 // Forward declarations
 void drawMenu();
+void drawConnectionStatus(bool force);
 
 // Scalable App Icon System
 // To add new apps:
@@ -179,6 +184,7 @@ void loop() {
   
   switch (currentMode) {
     case MENU:
+      drawConnectionStatus(false);
       if (touch.justPressed) handleMenuTouch();
       break;
     case KEYBOARD:
@@ -240,13 +246,7 @@ void drawMenu() {
   int startY = 65;
   
   // Connection status
-  if (!deviceConnected) {
-    tft.setTextColor(THEME_ERROR, THEME_BG);
-    tft.drawCentreString("BLE WAITING...", 160, 210, 2);
-  } else {
-    // Clear the waiting message when connected
-    tft.fillRect(100, 200, 120, 20, THEME_BG);
-  }
+  drawConnectionStatus(true);
   tft.setTextColor(deviceConnected ? THEME_SUCCESS : THEME_ERROR, THEME_BG);
   tft.drawString(deviceConnected ? "●" : "○", 290, 55, 2);
   
@@ -273,6 +273,51 @@ void drawMenu() {
     tft.setTextColor(THEME_TEXT, THEME_BG);
     tft.drawCentreString(apps[i].name, x + iconSize/2, y + iconSize + 5, 1);
   }
+}
+
+void drawConnectionStatus(bool force) {
+  const int statusY = 210;
+  const int statusHeight = 18;
+
+  if (deviceConnected) {
+    if (!force && connectionStatusWasConnected) return;
+
+    tft.fillRect(0, statusY, 320, statusHeight, THEME_BG);
+    tft.setTextColor(THEME_ACCENT, THEME_BG);
+    tft.drawCentreString("CONNECTED", 160, statusY, 2);
+    connectionStatusWasConnected = true;
+    return;
+  }
+
+  unsigned long now = millis();
+  if (force || connectionStatusWasConnected) {
+    connectionBlockVisible = true;
+    lastConnectionBlinkMs = now;
+  } else if (now - lastConnectionBlinkMs >= CONNECTION_BLINK_INTERVAL_MS) {
+    connectionBlockVisible = !connectionBlockVisible;
+    lastConnectionBlinkMs = now;
+  } else {
+    return;
+  }
+
+  const char* label = "CONNECT TO BLUETOOTH";
+  const int blockSize = 11;
+  const int blockGap = 5;
+  int labelWidth = tft.textWidth(label, 2);
+  int startX = (320 - labelWidth - blockGap - blockSize) / 2;
+
+  tft.fillRect(0, statusY, 320, statusHeight, THEME_BG);
+  tft.setTextColor(THEME_ACCENT, THEME_BG);
+  tft.drawString(label, startX, statusY, 2);
+
+  // A filled rectangle is used for U+2588 because the built-in TFT font does
+  // not contain that Unicode glyph. Visually this is the same solid block.
+  if (connectionBlockVisible) {
+    tft.fillRect(startX + labelWidth + blockGap, statusY + 2,
+                 blockSize, blockSize, THEME_ACCENT);
+  }
+
+  connectionStatusWasConnected = false;
 }
 
 void drawAppGraphics(AppMode mode, int x, int y, int iconSize) {
