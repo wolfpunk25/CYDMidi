@@ -116,6 +116,9 @@ void setup() {
   
   // Display setup
   tft.init();
+  // This LCDWIKI panel uses inverted pixel polarity: without this command,
+  // logical black is displayed as white and logical white as black.
+  tft.invertDisplay(true);
   tft.setRotation(1);
   pinMode(21, OUTPUT);
   digitalWrite(21, HIGH);
