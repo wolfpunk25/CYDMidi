@@ -10,6 +10,8 @@
 #include <BLEUtils.h>
 #include <BLEServer.h>
 #include <BLE2902.h>
+#include <esp_sleep.h>
+#include <driver/gpio.h>
 
 // Include mode files
 #include "keyboard_mode.h"
@@ -31,6 +33,8 @@
 #define XPT2046_MISO 39
 #define XPT2046_CLK 25
 #define XPT2046_CS 33
+#define POWER_SWITCH_PIN 35
+#define LCD_BACKLIGHT_PIN 21
 
 // On-board common-anode RGB LED (active-low)
 #define RGB_LED_RED 22
@@ -56,6 +60,7 @@ AppMode currentMode = MENU;
 unsigned long lastConnectionBlinkMs = 0;
 bool connectionBlockVisible = true;
 bool connectionStatusWasConnected = false;
+bool displayReady = false;
 const unsigned long CONNECTION_BLINK_INTERVAL_MS = 500;
 
 // Forward declarations
@@ -64,6 +69,7 @@ void drawConnectionStatus(bool force);
 void initializeRgbLed();
 void setRgbLedColor(uint16_t color);
 void setRgbLedForMode(AppMode mode);
+void enterPowerOffMode();
 
 // Scalable App Icon System
 // To add new apps:
@@ -137,6 +143,43 @@ void setRgbLedForMode(AppMode mode) {
   }
 }
 
+void enterPowerOffMode() {
+  Serial.println("Power switch OFF - entering deep sleep");
+
+  if (displayReady) {
+    stopAllModes();
+    tft.writecommand(0x28);  // ILI9341 display off
+    delay(10);
+    tft.writecommand(0x10);  // ILI9341 sleep in
+  }
+
+  digitalWrite(LCD_BACKLIGHT_PIN, LOW);
+
+  // Detach PWM, drive the active-low RGB channels high, and hold all four
+  // output pins in their off states throughout deep sleep.
+  ledcDetach(RGB_LED_RED);
+  ledcDetach(RGB_LED_GREEN);
+  ledcDetach(RGB_LED_BLUE);
+  pinMode(RGB_LED_RED, OUTPUT);
+  pinMode(RGB_LED_GREEN, OUTPUT);
+  pinMode(RGB_LED_BLUE, OUTPUT);
+  digitalWrite(RGB_LED_RED, HIGH);
+  digitalWrite(RGB_LED_GREEN, HIGH);
+  digitalWrite(RGB_LED_BLUE, HIGH);
+
+  gpio_hold_en((gpio_num_t)LCD_BACKLIGHT_PIN);
+  gpio_hold_en((gpio_num_t)RGB_LED_RED);
+  gpio_hold_en((gpio_num_t)RGB_LED_GREEN);
+  gpio_hold_en((gpio_num_t)RGB_LED_BLUE);
+  gpio_deep_sleep_hold_en();
+
+  // GPIO35 is an RTC-capable input. Switching it back to 3.3V wakes the
+  // controller and setup() starts again from a clean state.
+  esp_sleep_enable_ext0_wakeup(GPIO_NUM_35, 1);
+  Serial.flush();
+  esp_deep_sleep_start();
+}
+
 class MIDICallbacks: public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
       deviceConnected = true;
@@ -156,7 +199,34 @@ class MIDICallbacks: public BLEServerCallbacks {
 
 void setup() {
   Serial.begin(115200);
+
+  // Release output states retained across deep sleep, initially keeping the
+  // screen and RGB LED off to prevent a visible flash during startup.
+  pinMode(LCD_BACKLIGHT_PIN, OUTPUT);
+  digitalWrite(LCD_BACKLIGHT_PIN, LOW);
+  pinMode(RGB_LED_RED, OUTPUT);
+  pinMode(RGB_LED_GREEN, OUTPUT);
+  pinMode(RGB_LED_BLUE, OUTPUT);
+  digitalWrite(RGB_LED_RED, HIGH);
+  digitalWrite(RGB_LED_GREEN, HIGH);
+  digitalWrite(RGB_LED_BLUE, HIGH);
+  gpio_deep_sleep_hold_dis();
+  gpio_hold_dis((gpio_num_t)LCD_BACKLIGHT_PIN);
+  gpio_hold_dis((gpio_num_t)RGB_LED_RED);
+  gpio_hold_dis((gpio_num_t)RGB_LED_GREEN);
+  gpio_hold_dis((gpio_num_t)RGB_LED_BLUE);
+
+  pinMode(POWER_SWITCH_PIN, INPUT);
   initializeRgbLed();
+
+  // A short debounce prevents a switch transition from causing a false wake.
+  if (digitalRead(POWER_SWITCH_PIN) == LOW) {
+    delay(75);
+    if (digitalRead(POWER_SWITCH_PIN) == LOW) {
+      enterPowerOffMode();
+    }
+  }
+
   setRgbLedForMode(MENU);
   
   // Touch setup
@@ -170,8 +240,8 @@ void setup() {
   // logical black is displayed as white and logical white as black.
   tft.invertDisplay(true);
   tft.setRotation(1);
-  pinMode(21, OUTPUT);
-  digitalWrite(21, HIGH);
+  displayReady = true;
+  digitalWrite(LCD_BACKLIGHT_PIN, HIGH);
   
   // BLE MIDI Setup
   Serial.println("Initializing BLE MIDI...");
@@ -225,6 +295,13 @@ void setup() {
 }
 
 void loop() {
+  if (digitalRead(POWER_SWITCH_PIN) == LOW) {
+    delay(75);
+    if (digitalRead(POWER_SWITCH_PIN) == LOW) {
+      enterPowerOffMode();
+    }
+  }
+
   updateTouch();
   
   switch (currentMode) {
