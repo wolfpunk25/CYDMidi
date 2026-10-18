@@ -1,5 +1,5 @@
 /*******************************************************************
- MIDI Controller Main Launcher for ESP32 Cheap Yellow Display
+ Wolfpunk MIDI Controller Main Launcher for ESP32 touchscreen displays
  Main file - handles setup, menu, and mode switching
  *******************************************************************/
 
@@ -122,7 +122,7 @@ void setup() {
   
   // BLE MIDI Setup
   Serial.println("Initializing BLE MIDI...");
-  BLEDevice::init("CYD MIDI");
+  BLEDevice::init("WOLFPUNK");
   Serial.println("BLE Device initialized");
   
   BLEServer *server = BLEDevice::createServer();
@@ -146,14 +146,14 @@ void setup() {
   BLEAdvertising *advertising = server->getAdvertising();
   advertising->addServiceUUID(service->getUUID());
   BLEAdvertisementData adData;
-  adData.setName("CYD MIDI");
+  adData.setName("WOLFPUNK");
   adData.setCompleteServices(BLEUUID(SERVICE_UUID));
   advertising->setAdvertisementData(adData);
   advertising->setScanResponse(true);
   advertising->setMinPreferred(0x06);
   advertising->setMaxPreferred(0x12);
   advertising->start();
-  Serial.println("BLE Advertising started - Device discoverable as 'CYD MIDI'");
+  Serial.println("BLE Advertising started - Device discoverable as 'WOLFPUNK'");
   
   // Initialize mode systems
   initializeKeyboardMode();
@@ -220,9 +220,9 @@ void drawMenu() {
   tft.fillRect(0, 0, 320, 50, THEME_SURFACE);
   tft.drawFastHLine(0, 50, 320, THEME_PRIMARY);
   tft.setTextColor(THEME_PRIMARY, THEME_SURFACE);
-  tft.drawCentreString("MIDI CONTROLLER", 160, 12, 4);
+  tft.drawCentreString("WOLFPUNK MIDI", 160, 12, 4);
   tft.setTextColor(THEME_TEXT_DIM, THEME_SURFACE);
-  tft.drawCentreString("Cheap Yellow Display", 160, 32, 2);
+  tft.drawCentreString("Bluetooth Midi Controller", 160, 32, 2);
   
   // Version number
   tft.setTextColor(THEME_TEXT_DIM, THEME_SURFACE);

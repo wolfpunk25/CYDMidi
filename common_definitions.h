@@ -5,17 +5,17 @@
 #include <XPT2046_Touchscreen.h>
 #include <BLEDevice.h>
 
-// Color scheme
-#define THEME_BG         0x0841
-#define THEME_SURFACE    0x2945
-#define THEME_PRIMARY    0x06FF
+// Wolfpunk high-contrast color scheme
+#define THEME_BG         0x0000
+#define THEME_SURFACE    0x0000
+#define THEME_PRIMARY    0xFFFF
 #define THEME_SECONDARY  0xFD20
 #define THEME_ACCENT     0x07FF
 #define THEME_SUCCESS    0x07E0
 #define THEME_WARNING    0xFFE0
 #define THEME_ERROR      0xF800
 #define THEME_TEXT       0xFFFF
-#define THEME_TEXT_DIM   0x8410
+#define THEME_TEXT_DIM   0xFFFF
 
 // BLE MIDI UUIDs
 #define SERVICE_UUID        "03b80e5a-ede8-4b33-a751-6ce34ec4c700"

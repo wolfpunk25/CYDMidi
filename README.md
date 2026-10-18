@@ -1,6 +1,6 @@
-# CYD MIDI Controller
+# WOLFPUNK MIDI
 
-Touchscreen Bluetooth MIDI controller for the ESP32-2432S028R "Cheap Yellow Display" (CYD).
+Custom touchscreen Bluetooth MIDI controller for the LCDWIKI ESP32-32E display, based on [Nick Culbertson's CYD MIDI Controller](https://github.com/NickCulbertson/CYD-MIDI-Controller).
 
 Special thanks to Brian Lough for putting together the resources on this board. Check out his repo for more examples: https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display
 
@@ -28,7 +28,7 @@ Special thanks to Brian Lough for putting together the resources on this board. 
 
 ## What You Need
 
-- **ESP32-2432S028R (CYD)** - ~$15 from AliExpress/Amazon
+- **LCDWIKI ESP32-32E 2.8-inch display** with ILI9341 screen and XPT2046 resistive touch
 - Arduino IDE with ESP32 support
 
 ## Installation
@@ -51,13 +51,13 @@ In Arduino IDE Library Manager, install:
 Replace the `libraries/TFT_eSPI/User_Setup.h` with the `User_Setup.h` from the repo.
 
 ### 4. Upload Code
-1. Clone this repo and open `CYD_MIDI_Controller.ino`
+1. Clone this repo and open `CYDMidi.ino`
 2. Select board: `ESP32 Dev Module`
 3. Connect CYD and upload
 (Lower Upload Speed to `115200` if the sketch isn't uploading)
 
 ### 5. Connect
-1. Pair "CYD MIDI" via Bluetooth
+1. Pair "WOLFPUNK" via Bluetooth
 2. Select as MIDI input in your DAW
 
 ## Troubleshooting
