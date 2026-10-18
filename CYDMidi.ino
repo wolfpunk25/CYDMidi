@@ -32,6 +32,11 @@
 #define XPT2046_CLK 25
 #define XPT2046_CS 33
 
+// On-board common-anode RGB LED (active-low)
+#define RGB_LED_RED 22
+#define RGB_LED_GREEN 16
+#define RGB_LED_BLUE 17
+
 // Global objects
 SPIClass mySpi = SPIClass(VSPI);
 XPT2046_Touchscreen ts(XPT2046_CS, XPT2046_IRQ);
@@ -56,6 +61,9 @@ const unsigned long CONNECTION_BLINK_INTERVAL_MS = 500;
 // Forward declarations
 void drawMenu();
 void drawConnectionStatus(bool force);
+void initializeRgbLed();
+void setRgbLedColor(uint16_t color);
+void setRgbLedForMode(AppMode mode);
 
 // Scalable App Icon System
 // To add new apps:
@@ -89,6 +97,46 @@ AppIcon apps[] = {
 
 int numApps = 10;
 
+void initializeRgbLed() {
+  // Keep every channel off while PWM is being attached.
+  pinMode(RGB_LED_RED, OUTPUT);
+  pinMode(RGB_LED_GREEN, OUTPUT);
+  pinMode(RGB_LED_BLUE, OUTPUT);
+  digitalWrite(RGB_LED_RED, HIGH);
+  digitalWrite(RGB_LED_GREEN, HIGH);
+  digitalWrite(RGB_LED_BLUE, HIGH);
+
+  analogWrite(RGB_LED_RED, 255);
+  analogWrite(RGB_LED_GREEN, 255);
+  analogWrite(RGB_LED_BLUE, 255);
+}
+
+void setRgbLedColor(uint16_t color) {
+  // Convert the UI's RGB565 colour to 8-bit PWM. This LED is common-anode,
+  // so 0 is fully on and 255 is off for each channel.
+  uint8_t red = ((color >> 11) & 0x1F) * 255 / 31;
+  uint8_t green = ((color >> 5) & 0x3F) * 255 / 63;
+  uint8_t blue = (color & 0x1F) * 255 / 31;
+
+  analogWrite(RGB_LED_RED, 255 - red);
+  analogWrite(RGB_LED_GREEN, 255 - green);
+  analogWrite(RGB_LED_BLUE, 255 - blue);
+}
+
+void setRgbLedForMode(AppMode mode) {
+  if (mode == MENU) {
+    setRgbLedColor(THEME_ACCENT);  // Cyan on the launcher
+    return;
+  }
+
+  for (int i = 0; i < numApps; i++) {
+    if (apps[i].mode == mode) {
+      setRgbLedColor(apps[i].color);
+      return;
+    }
+  }
+}
+
 class MIDICallbacks: public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
       deviceConnected = true;
@@ -108,6 +156,8 @@ class MIDICallbacks: public BLEServerCallbacks {
 
 void setup() {
   Serial.begin(115200);
+  initializeRgbLed();
+  setRgbLedForMode(MENU);
   
   // Touch setup
   mySpi.begin(XPT2046_CLK, XPT2046_MISO, XPT2046_MOSI, XPT2046_CS);
@@ -472,6 +522,7 @@ void handleMenuTouch() {
 
 void enterMode(AppMode mode) {
   currentMode = mode;
+  setRgbLedForMode(mode);
   switch (mode) {
     case KEYBOARD:
       drawKeyboardMode();
@@ -509,6 +560,7 @@ void enterMode(AppMode mode) {
 
 void exitToMenu() {
   currentMode = MENU;
+  setRgbLedForMode(MENU);
   stopAllModes();
   delay(50);
   drawMenu();
