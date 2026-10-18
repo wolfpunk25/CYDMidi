@@ -35,6 +35,7 @@
 #define XPT2046_CS 33
 #define POWER_SWITCH_PIN 35
 #define LCD_BACKLIGHT_PIN 21
+#define BATTERY_ADC_PIN 34
 
 // On-board common-anode RGB LED (active-low)
 #define RGB_LED_RED 22
@@ -62,10 +63,17 @@ bool connectionBlockVisible = true;
 bool connectionStatusWasConnected = false;
 bool displayReady = false;
 const unsigned long CONNECTION_BLINK_INTERVAL_MS = 500;
+const unsigned long BATTERY_UPDATE_INTERVAL_MS = 30000;
+unsigned long lastBatteryUpdateMs = 0;
+float batteryVoltage = 0.0f;
+int batteryPercent = 0;
+bool batteryPresent = false;
 
 // Forward declarations
 void drawMenu();
 void drawConnectionStatus(bool force);
+void updateBatteryReading(bool force);
+void drawBatteryStatus();
 void initializeRgbLed();
 void setRgbLedColor(uint16_t color);
 void setRgbLedForMode(AppMode mode);
@@ -217,6 +225,8 @@ void setup() {
   gpio_hold_dis((gpio_num_t)RGB_LED_BLUE);
 
   pinMode(POWER_SWITCH_PIN, INPUT);
+  pinMode(BATTERY_ADC_PIN, INPUT);
+  analogSetPinAttenuation(BATTERY_ADC_PIN, ADC_11db);
   initializeRgbLed();
 
   // A short debounce prevents a switch transition from causing a false wake.
@@ -306,6 +316,7 @@ void loop() {
   
   switch (currentMode) {
     case MENU:
+      updateBatteryReading(false);
       if (connectionStatusDirty) {
         connectionStatusDirty = false;
         drawConnectionStatus(true);
@@ -374,6 +385,7 @@ void drawMenu() {
   
   // Connection status
   drawConnectionStatus(true);
+  updateBatteryReading(true);
   
   for (int i = 0; i < numApps; i++) {
     int col = i % cols;
@@ -398,6 +410,62 @@ void drawMenu() {
     tft.setTextColor(THEME_TEXT, THEME_BG);
     tft.drawCentreString(apps[i].name, x + iconSize/2, y + iconSize + 5, 1);
   }
+}
+
+int batteryPercentageFromVoltage(float voltage) {
+  // Approximate resting-voltage curve for a single-cell LiPo. Readings while
+  // the controller is busy or charging can move by a few percent.
+  const float volts[] = {3.30f, 3.50f, 3.60f, 3.70f, 3.75f,
+                         3.80f, 3.90f, 4.00f, 4.10f, 4.20f};
+  const int percents[] = {0, 10, 20, 35, 50, 60, 75, 85, 95, 100};
+  const int points = sizeof(volts) / sizeof(volts[0]);
+
+  if (voltage <= volts[0]) return 0;
+  if (voltage >= volts[points - 1]) return 100;
+
+  for (int i = 1; i < points; i++) {
+    if (voltage <= volts[i]) {
+      float fraction = (voltage - volts[i - 1]) / (volts[i] - volts[i - 1]);
+      return round(percents[i - 1] + fraction * (percents[i] - percents[i - 1]));
+    }
+  }
+  return 100;
+}
+
+void updateBatteryReading(bool force) {
+  unsigned long now = millis();
+  if (!force && now - lastBatteryUpdateMs < BATTERY_UPDATE_INTERVAL_MS) return;
+
+  // The board feeds half the battery voltage to GPIO34 through two 100K
+  // resistors. Average several calibrated readings to keep the display steady.
+  uint32_t millivoltsTotal = 0;
+  const int sampleCount = 16;
+  for (int i = 0; i < sampleCount; i++) {
+    millivoltsTotal += analogReadMilliVolts(BATTERY_ADC_PIN);
+    delay(2);
+  }
+
+  batteryVoltage = (millivoltsTotal / (float)sampleCount) * 2.0f / 1000.0f;
+  batteryPresent = batteryVoltage >= 2.5f;
+  batteryPercent = batteryPresent ? batteryPercentageFromVoltage(batteryVoltage) : 0;
+  lastBatteryUpdateMs = now;
+
+  if (currentMode == MENU) drawBatteryStatus();
+}
+
+void drawBatteryStatus() {
+  const int batteryY = 230;
+  tft.fillRect(0, batteryY, 320, 10, THEME_BG);
+  tft.setTextColor(THEME_TEXT_DIM, THEME_BG);
+
+  if (!batteryPresent) {
+    tft.drawCentreString("BATTERY NOT DETECTED", 160, batteryY, 1);
+    return;
+  }
+
+  char label[24];
+  snprintf(label, sizeof(label), "BAT %.2fV  %d%%", batteryVoltage, batteryPercent);
+  tft.drawCentreString(label, 160, batteryY, 1);
 }
 
 void drawConnectionStatus(bool force) {
