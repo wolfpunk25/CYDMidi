@@ -60,7 +60,7 @@ extern const int NUM_SCALES;
 extern TFT_eSPI tft;
 extern XPT2046_Touchscreen ts;
 extern BLECharacteristic *pCharacteristic;
-extern bool deviceConnected;
+extern volatile bool deviceConnected;
 extern uint8_t midiPacket[];
 extern TouchState touch;
 extern AppMode currentMode;

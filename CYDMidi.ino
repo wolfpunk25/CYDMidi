@@ -39,7 +39,8 @@ TFT_eSPI tft = TFT_eSPI();
 
 // BLE MIDI globals
 BLECharacteristic *pCharacteristic;
-bool deviceConnected = false;
+volatile bool deviceConnected = false;
+volatile bool connectionStatusDirty = true;
 uint8_t midiPacket[] = {0x80, 0x80, 0x00, 0x60, 0x7F};
 
 // Touch state
@@ -91,17 +92,11 @@ int numApps = 10;
 class MIDICallbacks: public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
       deviceConnected = true;
-      if (currentMode == MENU) {
-        drawMenu(); // Redraw menu to clear "BLE WAITING..."
-      }
-      updateStatus();
+      connectionStatusDirty = true;
     }
     void onDisconnect(BLEServer* pServer) {
       deviceConnected = false;
-      if (currentMode == MENU) {
-        drawMenu(); // Redraw menu to show "BLE WAITING..."
-      }
-      updateStatus();
+      connectionStatusDirty = true;
       // Stop all notes
       for (int i = 0; i < 128; i++) {
         sendMIDI(0x80, i, 0);
@@ -184,7 +179,12 @@ void loop() {
   
   switch (currentMode) {
     case MENU:
-      drawConnectionStatus(false);
+      if (connectionStatusDirty) {
+        connectionStatusDirty = false;
+        drawConnectionStatus(true);
+      } else {
+        drawConnectionStatus(false);
+      }
       if (touch.justPressed) handleMenuTouch();
       break;
     case KEYBOARD:
@@ -247,8 +247,6 @@ void drawMenu() {
   
   // Connection status
   drawConnectionStatus(true);
-  tft.setTextColor(deviceConnected ? THEME_SUCCESS : THEME_ERROR, THEME_BG);
-  tft.drawString(deviceConnected ? "●" : "○", 290, 55, 2);
   
   for (int i = 0; i < numApps; i++) {
     int col = i % cols;
@@ -278,46 +276,51 @@ void drawMenu() {
 void drawConnectionStatus(bool force) {
   const int statusY = 210;
   const int statusHeight = 18;
-
-  if (deviceConnected) {
-    if (!force && connectionStatusWasConnected) return;
-
-    tft.fillRect(0, statusY, 320, statusHeight, THEME_BG);
-    tft.setTextColor(THEME_ACCENT, THEME_BG);
-    tft.drawCentreString("CONNECTED", 160, statusY, 2);
-    connectionStatusWasConnected = true;
-    return;
-  }
-
-  unsigned long now = millis();
-  if (force || connectionStatusWasConnected) {
-    connectionBlockVisible = true;
-    lastConnectionBlinkMs = now;
-  } else if (now - lastConnectionBlinkMs >= CONNECTION_BLINK_INTERVAL_MS) {
-    connectionBlockVisible = !connectionBlockVisible;
-    lastConnectionBlinkMs = now;
-  } else {
-    return;
-  }
-
   const char* label = "CONNECT TO BLUETOOTH";
   const int blockSize = 11;
   const int blockGap = 5;
   int labelWidth = tft.textWidth(label, 2);
   int startX = (320 - labelWidth - blockGap - blockSize) / 2;
+  int blockX = startX + labelWidth + blockGap;
+  unsigned long now = millis();
 
-  tft.fillRect(0, statusY, 320, statusHeight, THEME_BG);
-  tft.setTextColor(THEME_ACCENT, THEME_BG);
-  tft.drawString(label, startX, statusY, 2);
-
-  // A filled rectangle is used for U+2588 because the built-in TFT font does
-  // not contain that Unicode glyph. Visually this is the same solid block.
-  if (connectionBlockVisible) {
-    tft.fillRect(startX + labelWidth + blockGap, statusY + 2,
-                 blockSize, blockSize, THEME_ACCENT);
+  // BLE callbacks run on a different ESP32 task. They only mark this display
+  // state as dirty; every TFT write happens here in the main loop.
+  if (!force && deviceConnected != connectionStatusWasConnected) {
+    force = true;
   }
 
-  connectionStatusWasConnected = false;
+  if (force) {
+    tft.fillRect(0, statusY, 320, statusHeight, THEME_BG);
+    tft.fillRect(286, 53, 26, 18, THEME_BG);
+    tft.setTextColor(THEME_ACCENT, THEME_BG);
+
+    if (deviceConnected) {
+      tft.drawCentreString("CONNECTED", 160, statusY, 2);
+      tft.fillCircle(299, 62, 4, THEME_ACCENT);
+    } else {
+      tft.drawString(label, startX, statusY, 2);
+      connectionBlockVisible = true;
+      tft.fillRect(blockX, statusY + 2, blockSize, blockSize, THEME_ACCENT);
+      tft.drawCircle(299, 62, 4, THEME_ACCENT);
+      lastConnectionBlinkMs = now;
+    }
+
+    connectionStatusWasConnected = deviceConnected;
+    return;
+  }
+
+  if (deviceConnected || now - lastConnectionBlinkMs < CONNECTION_BLINK_INTERVAL_MS) {
+    return;
+  }
+
+  connectionBlockVisible = !connectionBlockVisible;
+  lastConnectionBlinkMs = now;
+
+  // Blink by changing only the 11x11 block. Repainting the full line caused
+  // unnecessary SPI traffic and visible flicker on this panel.
+  tft.fillRect(blockX, statusY + 2, blockSize, blockSize,
+               connectionBlockVisible ? THEME_ACCENT : THEME_BG);
 }
 
 void drawAppGraphics(AppMode mode, int x, int y, int iconSize) {
